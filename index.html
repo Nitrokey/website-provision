@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nitrokey Credential Provisioning</title>
+<style>
+  :root {
+    color-scheme: light;
+    --red: #c70336;
+    --red-hover: #ab1738;
+    --red-dark: #9a0028;
+    --grey-bg: #f5f7fb;
+    --grey-btn: #e1e1e1;
+    --grey-text: #5f5f5f;
+    --dark: #3c4142;
+    --border: #e1e1e1;
+    --heading: "Teko", "Oswald", "Arial Narrow", Arial, sans-serif;
+  }
+
+  [hidden] { display: none !important; }  /* keeps hidden working on the flex containers below */
+  * { box-sizing: border-box; }
+  html { min-height: 100%; }
+  body {
+    margin: 0; background: #fff; color: #000;
+    font: 15px/1.6 "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--red); text-decoration: none; }
+  .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 1em; }
+
+  /* header: white bar with shadow, logo left */
+  .banner { position: sticky; top: 0; z-index: 10; background: #fff; box-shadow: 0 0 10px rgba(0,0,0,.3); }
+  .banner .bar { display: flex; align-items: center; gap: 1.5rem; min-height: 72px; }
+  .banner img { height: 44px; width: auto; }
+  #userBox { max-width: 30vw; text-align: right; font-size: .85rem; line-height: 1.3; }
+  #userBox div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #userName { font-weight: 600; }
+  #shareLabel { color: var(--grey-text); font-size: .8rem; }
+
+  /* red hero band with the diagonal shapes used on nitrokey.com */
+  .hero { position: relative; overflow: hidden; background: var(--red); color: #fff; padding: 1.6rem 0 1.8rem; margin-bottom: 2.5rem; }
+  .hero::before, .hero::after {
+    content: ""; position: absolute; left: 62%; right: -200px; top: -300px; bottom: -300px;
+    transform: rotate(20deg);
+  }
+  .hero::before { background: var(--red-dark); }
+  .hero::after { background: #ab1838; transform: rotate(20deg) translateX(15px); }
+  .hero .container { position: relative; z-index: 1; }
+  .hero h1 { margin: 0; font-family: var(--heading); font-weight: 700; font-size: 3rem; line-height: 1.05; }
+
+  /* centered login / share ID screens */
+  .center { display: flex; justify-content: center; align-items: center; min-height: 40vh; }
+  .card {
+    width: 100%; max-width: 26rem; padding: 2rem; text-align: center;
+    background: #fff; border-radius: 10px; box-shadow: 0 4px 25px rgba(0,0,0,.14);
+  }
+  .card h3 { margin: 0 0 1rem; font-family: var(--heading); font-weight: 700; font-size: 2rem; line-height: 1.1; }
+  .card input { width: 100%; margin-bottom: 1rem; }
+  .card button { width: 100%; margin: 0; }
+  #shareInfo { margin-top: .75rem; color: var(--grey-text); font-size: .9rem; }
+
+  /* inputs */
+  input[type=text], input:not([type]), select {
+    font: inherit; color: inherit; background: #fff;
+    border: 1px solid #ccc; border-radius: 8px; padding: .7rem .9rem;
+  }
+  input:focus-visible, select:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; border-color: var(--red); }
+  input[type=checkbox] { accent-color: var(--red); width: 1rem; height: 1rem; }
+  td select, th select { width: 100%; padding: .35rem .5rem; }
+
+  /* buttons: grey by default, red for the main actions (as on nitrokey.com) */
+  button {
+    font: inherit; font-weight: 600;
+    padding: .7rem 1.2rem; margin: 0 .4rem .6rem 0;
+    color: var(--dark); background: var(--grey-btn);
+    border: 1px solid var(--grey-btn); border-radius: 12px;
+    cursor: pointer;
+    transition: background .3s, border-color .3s, color .3s;
+  }
+  button:hover:not(:disabled) { background: var(--red-hover); border-color: var(--red-hover); color: #fff; }
+  button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  #shareBtn, #processBtn, #submitBtn, #downloadBtn { background: var(--red); border-color: var(--red); color: #fff; }
+  #shareBtn:hover:not(:disabled), #processBtn:hover:not(:disabled),
+  #submitBtn:hover:not(:disabled), #downloadBtn:hover:not(:disabled) { background: var(--red-hover); border-color: var(--red-hover); }
+
+  /* Microsoft sign-in button: white, grey text, 21px logo */
+  #loginBtn {
+    display: inline-flex; align-items: center; gap: 12px; height: 41px; padding: 0 12px;
+    background: #fff; color: #5e5e5e; border: 1px solid #8c8c8c; border-radius: 10px; font-size: 15px; font-weight: 600;
+  }
+  #loginBtn:hover:not(:disabled) { background: #f3f3f3; color: #5e5e5e; border-color: #8c8c8c; }
+  #loginBtn img { width: 21px; height: 21px; flex: none; object-fit: contain; }
+
+  /* messages */
+  #info { margin: .25rem 0 .75rem; color: var(--grey-text); font-size: .9rem; }
+  #errorDiv:empty { display: none; }
+  #errorDiv {
+    margin: 0 0 1rem; padding: 10px 14px; font-size: .9rem;
+    color: #8c2e0b; background: #fef5f1; border: 1px solid #ed541d; border-radius: 8px;
+  }
+
+  /* progress */
+  #progressDiv { display: flex; align-items: center; gap: .75rem; margin: .25rem 0 .5rem; font-size: .9rem; color: var(--grey-text); }
+  progress { width: 20rem; max-width: 60vw; height: .6rem; accent-color: var(--red); }
+
+  /* the table scrolls inside this box instead of squeezing its columns */
+  #tableWrap {
+    max-width: 100%; max-height: 70vh; overflow: auto; margin-bottom: 3rem;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 4px 25px rgba(0,0,0,.08);
+  }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .9rem; }
+  th, td {
+    padding: .8rem 1rem; text-align: left; vertical-align: top; border: 0;
+    min-width: 7em; max-width: 30em; overflow-wrap: anywhere;
+  }
+  thead th {
+    position: sticky; top: 0; z-index: 1; background: #fff;
+    font-weight: 700; white-space: nowrap; border-bottom: 2px solid var(--red);
+  }
+  tbody tr:nth-child(odd) td { background: var(--grey-bg); }
+  tbody tr:hover td { background: #e8ecf5; }
+  th:has(> input[type=checkbox]), td:has(> input[type=checkbox]) { min-width: 0; width: 2.5rem; }
+  [contenteditable="true"]:focus { outline: 2px solid var(--red); outline-offset: -2px; border-radius: 3px; background: #fff; }
+
+  /* machine-generated fields: fixed width, one line, clipped with "..." (display only) */
+  .mono, .detail { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; }
+  .mono { max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* detailed_status: wraps, but long API responses scroll inside the cell */
+  .detail { max-height: 6em; overflow: auto; }
+
+  /* Debug mode slider */
+  .debug { margin-left: auto; display: flex; align-items: center; gap: .5em; font-size: .85rem; white-space: nowrap; cursor: pointer; user-select: none; }
+  .debug input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .debug .track { position: relative; width: 2.4em; height: 1.3em; background: #c4c4c4; border-radius: 1em; transition: background .2s; }
+  .debug .track::after {
+    content: ""; position: absolute; top: .15em; left: .15em; width: 1em; height: 1em;
+    background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .2s;
+  }
+  .debug input:checked + .track { background: var(--red); }
+  .debug input:checked + .track::after { transform: translateX(1.1em); }
+  .debug input:focus-visible + .track { outline: 2px solid var(--red); outline-offset: 2px; }
+
+  /* busy cursor over the whole window while something is running (set on <html>, overrides all other cursors) */
+  html.busy, html.busy * { cursor: wait !important; }
+
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 2.2rem; }
+    .banner img { height: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="banner">
+  <div class="container bar">
+    <img src="https://www.nitrokey.com/sites/all/themes/nitrokey/logo.svg" alt="Nitrokey">
+    <label class="debug"><input type="checkbox" id="debugToggle"><span class="track"></span>Debug mode</label>
+    <div id="userBox"><div id="userName"></div><div id="shareLabel"></div></div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container">
+    <h1>Nitrokey Credential Provisioning</h1>
+  </div>
+</section>
+
+<main class="container">
+
+<div id="loginDiv" class="center" hidden>
+  <button id="loginBtn">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg" width="21" height="21" alt="">
+    <span>Login with Microsoft</span>
+  </button>
+</div>
+
+<div id="shareDiv" class="center" hidden>
+  <div class="card">
+    <h3>Enter Share ID</h3>
+    <input id="shareId" placeholder="Share ID" autocomplete="off">
+    <button id="shareBtn">Continue</button>
+    <div id="shareInfo"></div>
+  </div>
+</div>
+
+<div id="errorDiv" role="alert"></div>
+
+<div id="appDiv" hidden>
+  <input type="file" id="csvFile" accept=".csv" hidden>
+  <button id="entraBtn">Fetch user list</button>
+  <button id="uploadBtn">Upload CSV</button>
+  <button id="processBtn" hidden>Process List</button>
+  <button id="restartBtn" hidden>Start from beginning</button>
+  <button id="submitBtn" hidden>Submit List</button>
+  <button id="downloadBtn" hidden>Send to Nitrokey</button>
+  <div id="progressDiv" hidden>
+    <progress id="progress" value="0" max="1"></progress>
+    <span id="progressText"></span>
+  </div>
+  <div id="info"></div>
+  <div id="tableWrap"><table id="csvTable"></table></div>
+</div>
+  </main>
+
+<script>
+// Shows any script error at the top of the page (handy for diagnosing a broken page; safe to delete)
+window.addEventListener("error", e => {
+  const d = document.getElementById("errorDiv");
+  if (d) d.textContent = "Script error: " + e.message + (e.lineno ? " (line " + e.lineno + ")" : "");
+});
+window.addEventListener("unhandledrejection", e => {
+  const d = document.getElementById("errorDiv");
+  if (d) d.textContent = "Unhandled error: " + (e.reason && e.reason.message ? e.reason.message : e.reason);
+});
+
+const CLIENT_ID = "7eb1c1fe-b350-4e3b-983b-c8a3b168583e";
+// Work/school accounts of any tenant: "organizations".
+// Personal account that owns a test tenant: replace "organizations" with the tenant ID or domain.
+const AUTHORITY = "https://login.microsoftonline.com/organizations";
+
+const GRAPH = "https://graph.microsoft.com/beta";
+const SCOPES = "openid profile https://graph.microsoft.com/User.Read https://graph.microsoft.com/User.Read.All https://graph.microsoft.com/UserAuthenticationMethod.ReadWrite.All";
+const REDIRECT_URI = location.origin + location.pathname;
+const TIMEOUT_MINUTES = 43200; // 30 days (maximum allowed)
+const RP_ID = "login.microsoft.com";
+const CLOUD = "https://cloud.nitrokey.com/public.php/dav/files/";
+
+// Columns shown clipped to a fixed width (normalized names, see norm())
+const MACHINE_COLS = ["challenge", "userid", "userhandle", "credentialid",
+                      "clientdatajson", "attestationobject", "attestation"];
+
+let accessToken = null;
+let myUpn = "";
+let shareId = "";
+let headers = [];
+let rows = [];      // array of objects keyed by header
+let mode = null;    // "process" | "submit"
+const SEL = Symbol("sel"); // per-row "selected" flag, never written to the CSV
+let locked = false;
+
+const $ = id => document.getElementById(id);
+
+// ---------- PKCE helpers ----------
+function b64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function randomString(n = 64) {
+  const a = new Uint8Array(n);
+  crypto.getRandomValues(a);
+  return b64url(a).slice(0, n);
+}
+async function sha256(s) {
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+}
+
+// ---------- Login ----------
+$("loginBtn").onclick = async () => {
+  const verifier = randomString(64);
+  const state = randomString(16);
+  sessionStorage.setItem("verifier", verifier);
+  sessionStorage.setItem("state", state);
+
+  const challenge = b64url(await sha256(verifier));
+  location.href = `${AUTHORITY}/oauth2/v2.0/authorize?` +
+    new URLSearchParams({
+      client_id: CLIENT_ID,
+      response_type: "code",
+      redirect_uri: REDIRECT_URI,
+      response_mode: "query",
+      scope: SCOPES,
+      state: state,
+      code_challenge: challenge,
+      code_challenge_method: "S256"
+    });
+};
+
+async function exchangeCode(code) {
+  const verifier = sessionStorage.getItem("verifier");
+  const res = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID,
+      grant_type: "authorization_code",
+      code: code,
+      redirect_uri: REDIRECT_URI,
+      code_verifier: verifier,
+      scope: SCOPES
+    })
+  });
+  const j = await res.json();
+  if (!res.ok) throw new Error(j.error_description || j.error || "Token exchange failed");
+  return j;
+}
+
+async function init() {
+  const params = new URLSearchParams(location.search);
+
+  if (params.get("error")) {
+    $("errorDiv").textContent = params.get("error") + ": " + (params.get("error_description") || "");
+    $("loginDiv").hidden = false;
+    return;
+  }
+
+  const code = params.get("code");
+  if (!code) { $("loginDiv").hidden = false; return; }
+
+  setBusy(true);
+  try {
+    if (params.get("state") !== sessionStorage.getItem("state")) throw new Error("State mismatch");
+    const tokens = await exchangeCode(code);
+    accessToken = tokens.access_token;
+    history.replaceState({}, "", REDIRECT_URI); // code is single use, remove from URL
+
+    const me = await graph("GET", "/me");
+    myUpn = (me.userPrincipalName || "").toLowerCase();
+    $("userName").textContent = me.displayName || me.userPrincipalName;
+    $("shareDiv").hidden = false;
+  } catch (e) {
+    $("errorDiv").textContent = "Login failed: " + e.message;
+    $("loginDiv").hidden = false;
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ---------- Graph helper ----------
+async function graph(method, path, body) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(path.startsWith("http") ? path : GRAPH + path, {
+      method,
+      headers: {
+        "Authorization": "Bearer " + accessToken,
+        "Content-Type": "application/json"
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (res.status === 429) {
+      const wait = parseInt(res.headers.get("Retry-After") || "5", 10);
+      await new Promise(r => setTimeout(r, wait * 1000));
+      continue;
+    }
+    const text = await res.text();
+    let j = null;
+    try { j = text ? JSON.parse(text) : null; } catch (_) {}
+    if (!res.ok) {
+      const msg = j && j.error ? `${j.error.code}: ${j.error.message}` : text;
+      throw new Error(`HTTP ${res.status} ${msg}`);
+    }
+    return j;
+  }
+  throw new Error("Throttled too many times");
+}
+
+// ---------- CSV ----------
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const out = []; let row = [], f = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+      else f += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(f); out.push(row); row = []; f = "";
+    } else f += c;
+  }
+  if (f !== "" || row.length) { row.push(f); out.push(row); }
+  return out.filter(r => !(r.length === 1 && r[0] === ""));
+}
+
+// Serializes the given rows (all rows by default)
+function toCSV(list = rows) {
+  const esc = v => {
+    v = v == null ? "" : String(v);
+    return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  };
+  return [headers.map(esc).join(",")]
+    .concat(list.map(r => headers.map(h => esc(r[h])).join(",")))
+    .join("\r\n");
+}
+
+const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+function findCol(name) { return headers.find(h => norm(h) === norm(name)); }
+function findPrincipalCol() {
+  return headers.find(h => ["userprincipal", "userprincipalname"].includes(norm(h)));
+}
+function ensureCol(name) {
+  let c = findCol(name);
+  if (!c) { headers.push(name); c = name; rows.forEach(r => r[c] = ""); }
+  moveStatusLast();
+  return c;
+}
+function moveStatusLast() {
+  const s = findCol("status");
+  if (s) { headers.splice(headers.indexOf(s), 1); headers.push(s); }
+}
+function nowWithTz() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  const off = -d.getTimezoneOffset(), sign = off >= 0 ? "+" : "-", a = Math.abs(off);
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" +
+    p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) +
+    sign + p(Math.floor(a / 60)) + ":" + p(a % 60);
+}
+function setProgress(done, total) {
+  $("progressDiv").hidden = false;
+  $("progress").max = total;
+  $("progress").value = done;
+  $("progressText").textContent = done + " of " + total;
+}
+
+// Busy cursor: counts running tasks, so it only clears when the last one finishes
+let busyCount = 0;
+function setBusy(on) {
+  busyCount = Math.max(0, busyCount + (on ? 1 : -1));
+  document.documentElement.classList.toggle("busy", busyCount > 0);
+}
+
+const isMachineCol = h => MACHINE_COLS.includes(norm(h));
+const isDetailCol = h => norm(h) === "detailedstatus";
+
+// ---------- Security Key column (process mode only) ----------
+const KEY_COL = "Security Key";
+const KEY_OPTIONS = ["Nitrokey 3A NFC", "Nitrokey 3C NFC", "Nitrokey 3A Mini", "Nitrokey Passkey"];
+const KEY_DEFAULT = KEY_OPTIONS[0];
+const isKeyCol = h => norm(h) === "securitykey";
+
+// Adds the column if missing; empty or unknown values become the default
+function ensureKeyCol() {
+  const c = ensureCol(KEY_COL);
+  rows.forEach(r => {
+    const v = (r[c] || "").trim().toLowerCase();
+    r[c] = KEY_OPTIONS.find(k => k.toLowerCase() === v) || KEY_DEFAULT;
+  });
+}
+
+function keySelect(value, isMaster) {
+  const s = document.createElement("select");
+  if (isMaster) s.add(new Option("Set all...", ""));
+  KEY_OPTIONS.forEach(k => s.add(new Option(k, k)));
+  s.value = value;
+  return s;
+}
+
+// ---------- Debug mode: machine fields and detailed_status are hidden on screen unless it is on ----------
+// Only the display is affected: the columns stay in the data and in the downloaded/sent CSVs.
+const HIDDEN_COLS = ["challenge", "userid", "rpid", "credentialid", "clientdatajson", "attestationobject", "detailedstatus"];
+let debug = false;
+const visibleHeaders = () => debug ? headers : headers.filter(h => !HIDDEN_COLS.includes(norm(h)));
+$("debugToggle").onchange = e => { debug = e.target.checked; renderTable(); };
+
+function renderTable() {
+  const t = $("csvTable");
+  t.innerHTML = "";
+  const hr = t.createTHead().insertRow();
+  if (!locked) {
+    const th = document.createElement("th");
+    const all = document.createElement("input");
+    all.type = "checkbox";
+    all.checked = rows.every(r => r[SEL]);
+    all.onchange = () => { rows.forEach(r => r[SEL] = all.checked); renderTable(); };
+    th.appendChild(all);
+    hr.appendChild(th);
+  }
+  visibleHeaders().forEach(h => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    if (mode === "process" && isKeyCol(h) && !locked) {
+      th.appendChild(document.createElement("br"));
+      const master = keySelect("", true);
+      master.onchange = () => {
+        if (!master.value) return;
+        rows.forEach(r => r[h] = master.value);
+        renderTable();
+      };
+      th.appendChild(master);
+    }
+    hr.appendChild(th);
+  });
+
+  const tb = t.createTBody();
+  rows.forEach(r => {
+    const tr = tb.insertRow();
+    if (!locked) {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = r[SEL];
+      cb.onchange = () => { r[SEL] = cb.checked; renderTable(); };
+      tr.insertCell().appendChild(cb);
+    }
+    visibleHeaders().forEach(h => {
+      const td = tr.insertCell();
+      if (mode === "process" && isKeyCol(h) && !locked) {
+        const s = keySelect(r[h], false);
+        s.onchange = () => { r[h] = s.value; };
+        td.appendChild(s);
+        return;
+      }
+      const v = r[h] == null ? "" : String(r[h]);
+      let el = td;
+      if (isMachineCol(h)) {            // clipped display, full value kept in data + tooltip
+        el = document.createElement("div");
+        el.className = "mono";
+        el.title = v;
+        td.appendChild(el);
+      } else if (isDetailCol(h)) {      // long API responses scroll inside the cell
+        el = document.createElement("div");
+        el.className = "detail";
+        td.appendChild(el);
+      }
+      el.textContent = v;
+      // shipping address stays editable even after the table is locked
+      if (!locked || norm(h) === "shippingaddress") {
+        el.contentEditable = "true";
+        el.oninput = () => { r[h] = el.textContent; };
+      }
+    });
+  });
+}
+
+const SHARE_HOSTS = ["cloud.nitrokey.com", "nkproxy.adityaarghya0.workers.dev"];
+
+// Accepts a bare share ID or a share link. Returns the ID, or null if the link is from another host.
+function parseShareId(input) {
+  input = input.trim();
+  if (!input.includes("/")) return input;   // bare ID, used as is
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(input) ? input : "https://" + input);
+    if (!SHARE_HOSTS.includes(u.hostname.toLowerCase())) return null;
+    const parts = u.pathname.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- Cloud (Nextcloud public share via proxy, WebDAV, anonymous) ----------
+$("shareBtn").onclick = async () => {
+  shareId = parseShareId($("shareId").value);
+  if (!shareId) { $("errorDiv").textContent = "Enter a share ID or a link from cloud.nitrokey.com"; return; }
+  $("shareLabel").textContent = "Share: " + shareId;
+  $("shareLabel").title = shareId;
+  $("errorDiv").textContent = "";
+  $("shareBtn").disabled = true;
+  $("shareInfo").textContent = "Looking for output.csv...";
+  setBusy(true);
+
+  let text = null, problem = "";
+  try {
+    // ?t=<now> makes every request unique so a stale cached copy is never used
+    const res = await fetch(CLOUD + encodeURIComponent(shareId) + "/output.csv?t=" + Date.now());
+    if (res.ok) text = await res.text();
+    else if (res.status !== 404) problem = "Could not fetch output.csv: HTTP " + res.status + ". Continuing without it.";
+  } catch (e) {
+    problem = "Could not reach the cloud (" + e.message + "). Continuing without output.csv.";
+  }
+
+  $("shareDiv").hidden = true;
+  $("appDiv").hidden = false;
+  $("info").textContent = "No output.csv on the cloud: upload a CSV or get users from Entra.";
+  if (text !== null) {
+    loadCsvText(text);
+    if (headers.length) $("info").textContent += " (output.csv loaded from the cloud)";
+  }
+  if (problem) $("errorDiv").textContent = problem;
+  setBusy(false);
+};
+$("shareId").addEventListener("keydown", e => { if (e.key === "Enter") $("shareBtn").click(); });
+
+// ---------- Get users from Entra ----------
+$("entraBtn").onclick = async () => {
+  setBusy(true);
+  $("entraBtn").disabled = true;
+  $("errorDiv").textContent = "";
+  locked = false;
+  ["processBtn", "submitBtn", "downloadBtn", "progressDiv", "restartBtn"].forEach(id => $(id).hidden = true);
+  try {
+    const addr = ["streetAddress", "city", "state", "postalCode", "country"];
+    let url = "/users?$top=999&$select=" + ["userPrincipalName", "displayName", ...addr].join(",");
+    const list = [];
+    while (url) {
+      $("info").textContent = "Loading users... " + list.length;
+      const res = await graph("GET", url);
+      list.push(...(res.value || []));
+      url = res["@odata.nextLink"] || null;
+    }
+    if (!list.length) throw new Error("No users returned");
+
+    headers = ["user principal", "name", ...addr, "shipping address"];
+    rows = list.map(u => {
+      const o = {};
+      o[SEL] = false;
+      o["user principal"] = u.userPrincipalName || "";
+      o["name"] = u.displayName || "";
+      addr.forEach(f => o[f] = u[f] || "");
+      o["shipping address"] = addr.map(f => o[f]).filter(Boolean).join(", ");
+      return o;
+    });
+    // hide columns that are empty for every user (user principal and shipping address always stay)
+    headers = headers.filter(h => h === "user principal" || h === "shipping address" || rows.some(r => r[h]));
+
+    mode = "process";
+    ensureKeyCol();
+    $("processBtn").hidden = false;
+    $("info").textContent = list.length + " users loaded from Entra: ready to generate creation options.";
+    renderTable();
+  } catch (e) {
+    $("errorDiv").textContent = "Could not load users: " + e.message;
+    $("info").textContent = "";
+  }
+  $("entraBtn").disabled = false;
+  setBusy(false);
+};
+
+// ---------- Upload CSV ----------
+$("uploadBtn").onclick = () => $("csvFile").click();
+
+$("csvFile").onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  loadCsvText(await file.text());
+};
+
+// Shared by the file picker and the cloud download
+function loadCsvText(text) {
+  $("errorDiv").textContent = "";
+  locked = false;
+  ["processBtn", "submitBtn", "downloadBtn", "progressDiv", "restartBtn"].forEach(id => $(id).hidden = true);
+  ["entraBtn", "uploadBtn"].forEach(id => $(id).hidden = false);
+
+  const data = parseCSV(text);
+  if (data.length < 1) { $("errorDiv").textContent = "Empty CSV"; return; }
+
+  headers = data[0].map(h => h.trim());
+  rows = data.slice(1).map(cells => {
+    const o = {};
+    o[SEL] = false;
+    headers.forEach((h, i) => o[h] = cells[i] !== undefined ? cells[i] : "");
+    return o;
+  });
+
+  if (!findPrincipalCol()) {
+    $("errorDiv").textContent = "CSV must contain a 'user principal' column";
+    headers = []; rows = []; renderTable(); return;
+  }
+  ensureCol("shipping address");
+
+  const ao = findCol("attestationObject");
+  const hasAttestation = ao && rows.some(r => (r[ao] || "").trim() !== "");
+
+  if (hasAttestation && (!findCol("credential_id") || !findCol("clientDataJson"))) {
+    $("errorDiv").textContent = "attestationObject is present, so credential_id and clientDataJson columns are required";
+    headers = []; rows = []; renderTable(); return;
+  }
+
+  if (hasAttestation) {
+    mode = "submit";
+    ["entraBtn", "uploadBtn"].forEach(id => $(id).hidden = true);   // step 2: only Submit List is offered
+    $("submitBtn").hidden = false;
+    $("restartBtn").hidden = false;
+    $("info").textContent = "Attestation data found: ready to submit.";
+  } else {
+    mode = "process";
+    ensureKeyCol();
+    $("processBtn").hidden = false;
+    $("info").textContent = "No attestation data: ready to generate creation options.";
+  }
+  renderTable();
+}
+
+// Drops unchecked rows and makes the table read-only (except shipping address)
+function lockAndFilter() {
+  const kept = rows.filter(r => r[SEL]);
+  if (!kept.length) { $("errorDiv").textContent = "Select at least one row"; return false; }
+  $("errorDiv").textContent = "";
+  rows = kept;
+  locked = true;
+  renderTable();
+  return true;
+}
+
+// ---------- Start from beginning (step 2 -> step 1) ----------
+$("restartBtn").onclick = () => {
+  headers = []; rows = []; mode = null; locked = false;
+  $("csvTable").innerHTML = "";
+  ["processBtn", "submitBtn", "downloadBtn", "progressDiv", "restartBtn"].forEach(id => $(id).hidden = true);
+  ["entraBtn", "uploadBtn"].forEach(id => $(id).hidden = false);
+  $("errorDiv").textContent = "";
+  $("info").textContent = "Upload a CSV or get users from Entra.";
+};
+
+// ---------- Process (creation options) ----------
+// status = Success / Failed; detailed_status = the API response or the error
+$("processBtn").onclick = async () => {
+  if (!lockAndFilter()) return;
+  $("processBtn").disabled = true;
+  setBusy(true);
+  const pCol = findPrincipalCol();
+  const cCol = ensureCol("challenge");   // created here, so it only appears once processing starts
+  const uCol = ensureCol("user_id");
+  const rCol = ensureCol("rp_id");
+  const tCol = ensureCol("timestamp");
+  const xCol = ensureCol("detailed_status");
+  const sCol = ensureCol("status");
+
+  for (let i = 0; i < rows.length; i++) {
+    setProgress(i, rows.length);
+    const r = rows[i];
+    r[rCol] = RP_ID;
+    const upn = (r[pCol] || "").trim();
+    if (!upn) {
+      r[sCol] = "Failed"; r[xCol] = "Error: empty user principal";
+      renderTable(); continue;
+    }
+    if (upn.toLowerCase() === myUpn) {
+      r[sCol] = "Failed"; r[xCol] = "Skipped: signed-in user (creationOptions doesn't support self-service)";
+      renderTable(); continue;
+    }
+    r[sCol] = "Working..."; r[xCol] = "";
+    renderTable();
+    try {
+      const res = await graph("GET",
+        `/users/${encodeURIComponent(upn)}/authentication/fido2Methods/creationOptions(challengeTimeoutInMinutes=${TIMEOUT_MINUTES})`);
+      const pk = res.publicKey || res;
+      if (!pk.challenge || !pk.user || !pk.user.id) throw new Error("Unexpected response shape: " + JSON.stringify(res));
+      r[cCol] = pk.challenge;
+      r[uCol] = pk.user.id;
+      r[tCol] = nowWithTz();
+      r[sCol] = "Success";
+      r[xCol] = JSON.stringify(res);
+    } catch (e) {
+      r[sCol] = "Failed";
+      r[xCol] = e.message;
+    }
+    renderTable();
+  }
+  setProgress(rows.length, rows.length);
+  setBusy(false);
+  $("processBtn").disabled = false;
+  $("downloadBtn").hidden = false;
+  $("processBtn").hidden = true;
+};
+
+// ---------- Submit (register keys) ----------
+function buildCredential(r, idCol, cdCol, aoCol) {
+  const id = (r[idCol] || "").trim();
+  const cd = (r[cdCol] || "").trim();
+  const ao = (r[aoCol] || "").trim();
+  if (!id || !cd || !ao) throw new Error("credential_id, clientDataJson and attestationObject are all required");
+  return { id, response: { clientDataJSON: cd, attestationObject: ao } };
+}
+
+// status = Success / Failed; detailed_status = the API response or the error
+$("submitBtn").onclick = async () => {
+  if (!lockAndFilter()) return;
+  $("submitBtn").disabled = true;
+  setBusy(true);
+  $("restartBtn").disabled = true;   // don't allow a reset in the middle of the run
+  const pCol = findPrincipalCol();
+  const idCol = findCol("credential_id");
+  const cdCol = findCol("clientDataJson");
+  const aoCol = findCol("attestationObject");
+  const dCol = findCol("display_name");
+  const xCol = ensureCol("detailed_status");
+  const sCol = ensureCol("status");
+
+  for (let i = 0; i < rows.length; i++) {
+    setProgress(i, rows.length);
+    const r = rows[i];
+    const upn = (r[pCol] || "").trim();
+    if (!upn) {
+      r[sCol] = "Failed"; r[xCol] = "Error: empty user principal";
+      renderTable(); continue;
+    }
+    r[sCol] = "Working..."; r[xCol] = "";
+    renderTable();
+    try {
+      const displayName = (dCol && (r[dCol] || "").trim()) || "FIDO Key";
+      const res = await graph("POST",
+        `/users/${encodeURIComponent(upn)}/authentication/fido2Methods`,
+        { displayName, publicKeyCredential: buildCredential(r, idCol, cdCol, aoCol) });
+      r[sCol] = "Success";
+      r[xCol] = res ? JSON.stringify(res) : "OK (no response body)";
+    } catch (e) {
+      r[sCol] = "Failed";
+      r[xCol] = e.message;
+    }
+    renderTable();
+  }
+  setProgress(rows.length, rows.length);
+  setBusy(false);
+  $("restartBtn").disabled = false;
+  $("submitBtn").disabled = false;
+  // Stage 2 pushes to Entra, so there is nothing to send or save here
+};
+
+// ---------- Send to Nitrokey (stage 1 only: cloud push, local copy as fallback to email) ----------
+function downloadLocal(list = rows) {
+  const blob = new Blob([toCSV(list)], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (mode === "submit" ? "submitted" : "processed") + ".csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+$("downloadBtn").onclick = async () => {
+  if (mode === "submit") { downloadLocal(); return; }   // not reachable in step 2 (button is hidden there)
+
+  // only rows that got a challenge are sent (skipped and failed rows are left out)
+  const cCol = findCol("challenge");
+  const send = rows.filter(r => cCol && (r[cCol] || "").trim() !== "");
+  const dropped = rows.length - send.length;
+  if (!send.length) {
+    $("errorDiv").textContent = "Nothing to send: no row has a challenge.";
+    return;
+  }
+
+  $("downloadBtn").disabled = true;
+  setBusy(true);
+  try {
+    const res = await fetch(CLOUD + encodeURIComponent(shareId) + "/processed.csv", {
+      method: "PUT",
+      headers: { "Content-Type": "text/csv;charset=utf-8" },
+      body: toCSV(send)
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    $("errorDiv").textContent = "";
+    $("info").textContent = "processed.csv uploaded to the cloud: " + send.length + " rows sent" +
+      (dropped ? ", " + dropped + " left out (no challenge)." : ".");
+  } catch (e) {
+    $("errorDiv").textContent = "Upload failed (" + e.message + "). Saved a local copy instead.";
+    downloadLocal(send);
+  }
+  setBusy(false);
+  $("downloadBtn").disabled = false;
+};
+
+init();
+</script>
+</body>
+</html>
